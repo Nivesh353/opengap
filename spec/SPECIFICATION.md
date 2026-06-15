@@ -606,7 +606,7 @@ output_schema:
           url: { type: string }
 implementation:
   type: script
-  path: search-regulations.py
+  script: search-regulations.py
   runtime: python3
   timeout: 30
 annotations:
