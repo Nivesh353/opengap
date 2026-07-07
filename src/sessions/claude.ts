@@ -23,7 +23,13 @@ import {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Encode a cwd into Claude's project-dir name (slashes → dashes). */
+/**
+ * Encode a cwd into Claude's project-dir name (slashes → dashes).
+ * LOSSY BY DESIGN — this matches Claude Code's own scheme, so we can't change it
+ * without breaking resume compatibility. Consequence: two cwds that differ only
+ * by dash-vs-slash (e.g. "/home/alice-bob/x" vs "/home/alice/bob/x") encode to
+ * the same project dir, so their sessions can collide there.
+ */
 function encodeCwd(cwd: string): string {
   return cwd.replace(/\//g, '-');
 }
@@ -185,10 +191,11 @@ function writeClaude(session: CanonicalSession, opts: SessionWriteOptions): Sess
   if (!cwd) {
     throw new Error('claude write requires --agent <working dir> (or a source session with a known cwd)');
   }
-  const sessionId = opts.sessionId && UUID_RE.test(opts.sessionId) ? opts.sessionId : randomUUID();
+  // Validate first, then assign — avoids a confusing throwaway assignment.
   if (opts.sessionId && !UUID_RE.test(opts.sessionId)) {
     throw new Error(`claude --session-id must be a UUID, got: ${opts.sessionId}`);
   }
+  const sessionId = opts.sessionId ?? randomUUID();
 
   const dir = join(homedir(), '.claude', 'projects', encodeCwd(cwd));
   mkdirSync(dir, { recursive: true });

@@ -256,8 +256,11 @@ function writeGitagent(session: CanonicalSession, opts: SessionWriteOptions): Se
     // Commit any pending work on the current branch (voice does this too).
     tryGit(['add', '-A']);
     tryGit(['commit', '-m', 'auto-save before session import', '--allow-empty']);
-    // Create or switch to the chat branch.
-    if (!tryGit(['checkout', '-b', branch])) tryGit(['checkout', branch]);
+    // Create or switch to the chat branch. If neither works, DON'T write on the
+    // wrong branch — fail loudly (the finally still restores the original branch).
+    if (!tryGit(['checkout', '-b', branch]) && !tryGit(['checkout', branch])) {
+      throw new Error(`Could not switch to branch "${branch}" — is the working tree clean / index unlocked?`);
+    }
     // Write files on this branch and commit them.
     paths = writeFiles();
     tryGit(['add', '-A']);

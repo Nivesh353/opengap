@@ -406,7 +406,15 @@ function requireSqlite(): void {
 }
 
 function writeCopilot(session: CanonicalSession, opts: SessionWriteOptions): SessionWriteResult {
-  requireSqlite(); // fail before writing any files if sqlite is unavailable
+  // Fail BEFORE writing any files: both node:sqlite availability and the global
+  // store DB must exist, else we'd leave an orphaned session-state dir.
+  requireSqlite();
+  const dbPath = storeDbPath();
+  if (!existsSync(dbPath)) {
+    throw new Error(
+      `Copilot session store not found at ${dbPath} — is the Copilot CLI installed and run at least once?`,
+    );
+  }
   const sessionId = opts.sessionId || randomUUID();
   const cwd = opts.dir ?? session.cwd ?? process.cwd();
   const gitRoot = findGitRoot(cwd);
