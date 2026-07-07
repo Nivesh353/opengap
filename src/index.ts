@@ -19,7 +19,7 @@ const program = new Command();
 program
   .name('opengap')
   .description('OpenGAP — the Git Agent Protocol: a framework-agnostic, git-native standard for defining AI agents')
-  .version('0.5.0');
+  .version('0.6.0');
 
 program.addCommand(initCommand);
 program.addCommand(validateCommand);
