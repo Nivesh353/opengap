@@ -7,10 +7,12 @@ import { copilotAdapter } from './copilot.js';
 import { claudeAdapter } from './claude.js';
 import { gitagentAdapter } from './gitagent.js';
 import { codexAdapter } from './codex.js';
+import { geminiAdapter } from './gemini.js';
 
 registerSessionAdapter(copilotAdapter);
 registerSessionAdapter(claudeAdapter);
 registerSessionAdapter(gitagentAdapter);
 registerSessionAdapter(codexAdapter);
+registerSessionAdapter(geminiAdapter);
 
 export * from './canonical.js';
