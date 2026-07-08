@@ -6,9 +6,11 @@ import { registerSessionAdapter } from './canonical.js';
 import { copilotAdapter } from './copilot.js';
 import { claudeAdapter } from './claude.js';
 import { gitagentAdapter } from './gitagent.js';
+import { codexAdapter } from './codex.js';
 
 registerSessionAdapter(copilotAdapter);
 registerSessionAdapter(claudeAdapter);
 registerSessionAdapter(gitagentAdapter);
+registerSessionAdapter(codexAdapter);
 
 export * from './canonical.js';

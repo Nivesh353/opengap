@@ -697,7 +697,7 @@ opengap run -d ./my-agent -a prompt
 
 ### session
 
-Transform and resume conversation **sessions** across tools. OpenGAP reads a session from one tool into a tool-neutral **canonical session format**, then writes it out to another tool — so a chat can move between Copilot, Claude Code, and gitagent (any-to-any). Carries **messages + tool calls (+ memory)**; model settings are excluded.
+Transform and resume conversation **sessions** across tools. OpenGAP reads a session from one tool into a tool-neutral **canonical session format**, then writes it out to another tool — so a chat can move between Copilot, Claude Code, gitagent, and Codex (any-to-any). Carries **messages + tool calls (+ memory)**; model settings are excluded.
 
 ```bash
 opengap session list   --from <tool> [--dir <agentDir>]
@@ -705,17 +705,18 @@ opengap session export --from <tool> --session <id> [-o file.json]
 opengap session import --from <tool> --session <id> --to <tool> [--agent <dir>] [--session-id <id>]
 ```
 
-Tools: `copilot`, `claude`, `gitagent`.
+Tools: `copilot`, `claude`, `gitagent`, `codex`.
 
 | Command | What it does |
 |---------|--------------|
-| `list` | List available sessions for a tool (Copilot session-state dirs, Claude project transcripts, or gitagent branches). |
+| `list` | List available sessions for a tool (Copilot session-state dirs, Claude project transcripts, gitagent branches, or Codex rollouts). |
 | `export` | Read a session and output the canonical session JSON (stdout or `-o`). This is the standalone Transformer. |
 | `import` | Read from `--from`, convert to canonical, and write into `--to`. Prints how to resume. |
 
 **Resume mechanics per target:**
-- **gitagent** — distills the session into `memory/MEMORY.md` (what the gitagent CLI reloads and recalls) and writes the raw chat-history as an archive. Resume: `cd <agent> && gitagent`.
+- **gitagent** — distills the session into `memory/MEMORY.md` (what the gitagent CLI reloads and recalls) and writes the raw chat-history as an archive. In a git-native agent it commits the history on a `chat/*` branch so it appears in the voice UI's session list. Resume: `cd <agent> && gitagent`.
 - **claude** — writes an Anthropic-format transcript into `~/.claude/projects/<cwd>/<uuid>.jsonl`. Resume via the shipped passthrough: `opengap run -a claude --resume <uuid> --workspace <cwd>`. _(Best-effort — Claude Code's transcript format is internal; verify resume.)_
+- **codex** — writes a native rollout JSONL under `~/.codex/sessions/…` **and** registers the session in Codex's state DB (`~/.codex/state_<N>.sqlite`, the `threads` index the picker reads). Resume: `codex resume` (or `codex resume --last`). Requires Node 22.5+ (built-in `node:sqlite`). _(Reading Codex also drops its synthetic `<environment_context>` / `<user_instructions>` injections so only real turns carry over.)_
 - **copilot** — experimental: writes `events.jsonl` but not Copilot's SQLite index, so the Copilot CLI may not auto-list/resume it. Interop/archival only for now.
 
 ```bash
@@ -728,8 +729,12 @@ cd ./my-agent && gitagent          # recalls the imported session from MEMORY.md
 opengap session import --from copilot --session <id> --to claude --agent ~/code/my-app
 opengap run -a claude --resume <uuid> --workspace ~/code/my-app -p "continue"
 
+# Bring a gitagent chat into Codex and resume it there
+opengap session import --from gitagent --session chat/my-chat --dir ./my-agent --to codex --agent ~/code/my-app
+codex resume                       # the imported session shows in the picker
+
 # Just inspect the canonical form
-opengap session export --from claude --session <uuid> -o session.json
+opengap session export --from codex --session <uuid> -o session.json
 ```
 
 ---

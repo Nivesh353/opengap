@@ -23,14 +23,14 @@ interface ImportOptions {
 }
 
 export const sessionCommand = new Command('session').description(
-  'Transform and resume conversation sessions across tools (copilot, claude, gitagent)',
+  'Transform and resume conversation sessions across tools (copilot, claude, gitagent, codex)',
 );
 
 // opengap session list --from <tool>
 sessionCommand
   .command('list')
   .description('List available sessions for a tool')
-  .requiredOption('--from <tool>', 'Source tool: copilot, claude, gitagent')
+  .requiredOption('--from <tool>', 'Source tool: copilot, claude, gitagent, codex')
   .option('-d, --dir <dir>', 'Agent directory (required for gitagent)')
   .action((options: ListOptions) => {
     try {
@@ -58,8 +58,8 @@ sessionCommand
 sessionCommand
   .command('export')
   .description('Read a session and output the canonical session format (JSON)')
-  .requiredOption('--from <tool>', 'Source tool: copilot, claude, gitagent')
-  .requiredOption('--session <id>', 'Session id (Copilot/Claude uuid, or gitagent branch)')
+  .requiredOption('--from <tool>', 'Source tool: copilot, claude, gitagent, codex')
+  .requiredOption('--session <id>', 'Session id (Copilot/Claude/Codex uuid, or gitagent branch)')
   .option('-d, --dir <dir>', 'Agent directory (required for gitagent)')
   .option('-o, --output <output>', 'Write canonical JSON to a file instead of stdout')
   .action(async (options: ExportOptions) => {
@@ -88,9 +88,9 @@ sessionCommand
 sessionCommand
   .command('import')
   .description('Convert a session from one tool and write it into another (resume there)')
-  .requiredOption('--from <tool>', 'Source tool: copilot, claude, gitagent')
+  .requiredOption('--from <tool>', 'Source tool: copilot, claude, gitagent, codex')
   .requiredOption('--session <id>', 'Source session id')
-  .requiredOption('--to <tool>', 'Target tool: gitagent, claude, copilot')
+  .requiredOption('--to <tool>', 'Target tool: gitagent, claude, copilot, codex')
   .option('-d, --dir <dir>', 'Source agent directory (required if source is gitagent)')
   .option('--agent <dir>', 'Target agent/working directory')
   .option('--session-id <id>', 'Target session id / branch to write under')

@@ -46,27 +46,66 @@ function memoryPath(agentDir: string): string {
   return join(agentDir, 'memory', 'MEMORY.md');
 }
 
+/** Run git in the agent dir; returns raw stdout, or undefined on any failure. */
+function gitOut(agentDir: string, args: string[]): string | undefined {
+  try {
+    return execFileSync('git', args, { cwd: agentDir, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Path of a branch's history file, relative to the repo root (for `git show`). */
+function historyRelPath(branch: string): string {
+  return `.gitagent/chat-history/${sanitizeBranch(branch)}.jsonl`;
+}
+
 function listGitagent(opts?: SessionListOptions): SessionListEntry[] {
   const agentDir = requireDir(opts?.dir, 'list');
+  const ids = new Set<string>();
+  // Working-tree history files (non-git repos, `main`, and uncommitted chats).
   const dir = historyDir(agentDir);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter(f => f.endsWith('.jsonl'))
-    .map(f => ({ id: unsanitizeBranch(f) }));
+  if (existsSync(dir)) {
+    for (const f of readdirSync(dir)) if (f.endsWith('.jsonl')) ids.add(unsanitizeBranch(f));
+  }
+  // Every `chat/*` git branch is a session — each commits its own history on its
+  // own branch, so this matches what the gitagent voice UI lists (branches, not
+  // just the files present on the checked-out branch).
+  const out = gitOut(agentDir, ['branch', '--list', 'chat/*', '--format=%(refname:short)']);
+  if (out) for (const b of out.split('\n').map(s => s.trim()).filter(Boolean)) ids.add(b);
+  return [...ids].map(id => ({ id }));
 }
 
 function readGitagent(opts: SessionReadOptions): CanonicalSession {
   const agentDir = requireDir(opts.dir, 'read');
   // Accept the branch as listed, or its `chat/`-prefixed form (write prefixes it).
-  let path = historyPath(agentDir, opts.sessionId);
-  if (!existsSync(path) && !opts.sessionId.startsWith('chat/')) {
-    const alt = historyPath(agentDir, `chat/${opts.sessionId}`);
-    if (existsSync(alt)) path = alt;
+  const candidates = opts.sessionId.startsWith('chat/')
+    ? [opts.sessionId]
+    : [opts.sessionId, `chat/${opts.sessionId}`];
+
+  // Prefer a working-tree file; otherwise read the history committed on that
+  // branch even when it isn't checked out (`git show <branch>:<path>`).
+  let content: string | undefined;
+  for (const b of candidates) {
+    const p = historyPath(agentDir, b);
+    if (existsSync(p)) {
+      content = readFileSync(p, 'utf-8');
+      break;
+    }
   }
-  if (!existsSync(path)) throw new Error(`gitagent session not found: ${path}`);
+  if (content === undefined) {
+    for (const b of candidates) {
+      const got = gitOut(agentDir, ['show', `${b}:${historyRelPath(b)}`]);
+      if (got !== undefined) {
+        content = got;
+        break;
+      }
+    }
+  }
+  if (content === undefined) throw new Error(`gitagent session not found: ${opts.sessionId}`);
 
   const items: CanonicalItem[] = [];
-  for (const line of readFileSync(path, 'utf-8').split('\n')) {
+  for (const line of content.split('\n')) {
     if (!line.trim()) continue;
     let entry: any;
     try {

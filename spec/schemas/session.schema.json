@@ -13,7 +13,7 @@
     },
     "source": {
       "type": "string",
-      "description": "Tool the session was read from (e.g. copilot, claude, gitagent)"
+      "description": "Tool the session was read from (e.g. copilot, claude, gitagent, codex)"
     },
     "session_id": {
       "type": "string",
