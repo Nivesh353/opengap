@@ -100,6 +100,10 @@ export function parseGeminiSession(content: string): ParsedGemini {
   const items: CanonicalItem[] = [];
   let sessionId: string | undefined;
   let createdAt: string | undefined;
+  // Gemini logs an assistant turn's text twice — once as a plain record, then
+  // again on the record that carries the tool call. Track the last assistant
+  // text to drop that immediate repeat.
+  let lastAssistant: string | undefined;
 
   for (const line of content.split('\n')) {
     if (!line.trim()) continue;
@@ -135,7 +139,10 @@ export function parseGeminiSession(content: string): ParsedGemini {
           break;
         }
         const text = partsText(rec.content);
-        if (text.trim() && !SYNTHETIC_MSG_RE.test(text)) items.push({ type: 'message', role: 'user', text });
+        if (text.trim() && !SYNTHETIC_MSG_RE.test(text)) {
+          items.push({ type: 'message', role: 'user', text });
+          lastAssistant = undefined; // a real user turn ends the assistant run
+        }
         break;
       }
       case 'gemini': {
@@ -149,7 +156,11 @@ export function parseGeminiSession(content: string): ParsedGemini {
           items.push({ type: 'reasoning', text: rec.thoughts });
         }
         const text = partsText(rec.content);
-        if (text.trim()) items.push({ type: 'message', role: 'assistant', text });
+        // Skip the immediate repeat of the same assistant text (see note above).
+        if (text.trim() && text !== lastAssistant) {
+          items.push({ type: 'message', role: 'assistant', text });
+          lastAssistant = text;
+        }
         break;
       }
       // 'info' and anything else are UI banners — skipped.
