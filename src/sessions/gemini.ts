@@ -229,11 +229,26 @@ function hexId(): string {
   return randomUUID().replace(/-/g, '');
 }
 
+/** Wrap a tool_result's content as a Gemini functionResponse `response` object. */
+function toResponse(content: string, isError: boolean): Record<string, unknown> {
+  if (isError) return { error: content };
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
+  } catch {
+    /* not JSON — wrap as output */
+  }
+  return { output: content };
+}
+
 /**
  * Write a canonical session as a Gemini `--session-file` JSONL. Carries
- * user/assistant turns (+ memory as a leading assistant turn); tool calls are
- * dropped, matching Gemini's own import filter (user/gemini text only).
- * Resume: `cd <cwd> && gemini --session-file <path>`.
+ * user/assistant turns (+ memory as a leading assistant turn). Tool steps ARE
+ * carried when they have ids (tool_call → a `gemini` record with `toolCalls`,
+ * tool_result → a `user` record with a `functionResponse`), paired by id so
+ * Gemini's history reconstruction matches them. Sources that link tool calls by
+ * order rather than id (e.g. gitagent) have no ids, so their tool steps are
+ * dropped rather than emitted unpaired. Resume: `cd <cwd> && gemini --session-file <path>`.
  */
 function writeGemini(session: CanonicalSession, opts: SessionWriteOptions): SessionWriteResult {
   const cwd = opts.dir ?? session.cwd ?? process.cwd();
@@ -259,14 +274,54 @@ function writeGemini(session: CanonicalSession, opts: SessionWriteOptions): Sess
     .join('\n\n');
   if (memText) pushGemini(`Context I remember about you from previous sessions:\n\n${memText}`);
 
+  // tool_result records reference their call by id; resolve the call's name for
+  // the functionResponse, and only emit a result whose call we actually wrote.
+  const nameById = new Map<string, string>();
+  for (const it of session.items) {
+    if (it.type === 'tool_call' && it.id) nameById.set(it.id, it.name);
+  }
+  const emittedCalls = new Set<string>();
+
   for (const it of session.items) {
     if (it.type === 'message') {
       if (it.role === 'user') pushUser(it.text);
       else if (it.role === 'assistant') pushGemini(it.text);
       // system prompts are not part of the transcript
+    } else if (it.type === 'tool_call') {
+      if (it.id) {
+        lines.push(
+          JSON.stringify({
+            id: hexId(),
+            timestamp: nowIso,
+            type: 'gemini',
+            content: '',
+            toolCalls: [{ id: it.id, name: it.name, args: it.args ?? {} }],
+          }),
+        );
+        emittedCalls.add(it.id);
+      }
+      // no id → can't pair with a result, so drop (sources like gitagent)
+    } else if (it.type === 'tool_result') {
+      if (it.id && emittedCalls.has(it.id)) {
+        lines.push(
+          JSON.stringify({
+            id: hexId(),
+            timestamp: nowIso,
+            type: 'user',
+            content: [
+              {
+                functionResponse: {
+                  id: it.id,
+                  name: nameById.get(it.id) ?? 'tool',
+                  response: toResponse(it.content, it.is_error === true),
+                },
+              },
+            ],
+          }),
+        );
+      }
     }
-    // tool_call / tool_result / reasoning are dropped (Gemini import keeps only
-    // user/gemini turns); the conversation still resumes with full text context.
+    // reasoning is dropped
   }
 
   mkdirSync(cwd, { recursive: true });
