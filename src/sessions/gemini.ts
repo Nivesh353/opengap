@@ -269,9 +269,8 @@ function writeGemini(session: CanonicalSession, opts: SessionWriteOptions): Sess
     // user/gemini turns); the conversation still resumes with full text context.
   }
 
-  const dir = join(cwd);
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, `gemini-session-${sessionId.slice(0, 8)}.jsonl`);
+  mkdirSync(cwd, { recursive: true });
+  const file = join(cwd, `gemini-session-${sessionId.slice(0, 8)}.jsonl`);
   writeFileSync(file, lines.join('\n') + '\n', 'utf-8');
 
   return {

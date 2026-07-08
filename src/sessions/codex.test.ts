@@ -2,7 +2,12 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseRollout } from './codex.js';
 
-/** Build a Codex rollout JSONL fixture (one record per line). */
+/**
+ * Build a Codex rollout JSONL fixture (one record per line). Each record is a
+ * full envelope `{ timestamp, type, payload }` — the parser reads conversation
+ * from records whose top-level `type` is "response_item". Tests that pass a
+ * pre-serialized `msg(...)` string still carry this envelope.
+ */
 function rollout(records: Array<{ type: string; payload: Record<string, unknown> }>): string {
   return records.map(r => JSON.stringify({ timestamp: '2026-07-08T00:00:00.000Z', ...r })).join('\n') + '\n';
 }

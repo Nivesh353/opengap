@@ -234,22 +234,54 @@ function requireCodexStore(): string {
   return db;
 }
 
-/** The cli_version Codex last recorded (from its own threads), for a matching rollout. */
-function latestCliVersion(dbPath: string): string {
+/**
+ * The cli_version + model Codex last recorded (from its own threads), so an
+ * imported rollout matches this install rather than hardcoded values that could
+ * fail a resume-time model allowlist.
+ */
+function threadDefaults(dbPath: string): { cliVersion: string; model?: string } {
   try {
     const { DatabaseSync } = nodeRequire('node:sqlite') as typeof import('node:sqlite');
     const db = new DatabaseSync(dbPath);
     try {
       const row = db
-        .prepare("SELECT cli_version FROM threads WHERE cli_version <> '' ORDER BY created_at DESC LIMIT 1")
-        .get() as { cli_version?: string } | undefined;
-      return row?.cli_version || '0.0.0';
+        .prepare("SELECT cli_version, model FROM threads WHERE cli_version <> '' ORDER BY created_at DESC LIMIT 1")
+        .get() as { cli_version?: string; model?: string } | undefined;
+      const modelRow = db
+        .prepare("SELECT model FROM threads WHERE model IS NOT NULL AND model <> '' ORDER BY created_at DESC LIMIT 1")
+        .get() as { model?: string } | undefined;
+      return { cliVersion: row?.cli_version || '0.0.0', model: modelRow?.model || row?.model || undefined };
     } finally {
       db.close();
     }
   } catch {
-    return '0.0.0';
+    return { cliVersion: '0.0.0' };
   }
+}
+
+/**
+ * The model_context_window Codex records in a real rollout's task_started event,
+ * so the imported session reports the same window. Scans real rollouts newest
+ * first (only the first few records — task_started is near the top).
+ */
+function detectContextWindow(): number | undefined {
+  const files = rolloutFiles();
+  for (let i = files.length - 1; i >= 0; i--) {
+    try {
+      let n = 0;
+      for (const line of readFileSync(files[i], 'utf-8').split('\n')) {
+        if (!line.trim()) continue;
+        if (++n > 30) break;
+        const o = JSON.parse(line);
+        if (o.type === 'event_msg' && o.payload?.type === 'task_started' && typeof o.payload.model_context_window === 'number') {
+          return o.payload.model_context_window;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return undefined;
 }
 
 /** Timestamp for a rollout filename: YYYY-MM-DDTHH-MM-SS (from an ISO string). */
@@ -294,7 +326,8 @@ function writeCodex(session: CanonicalSession, opts: SessionWriteOptions): Sessi
   const sessionId = opts.sessionId ?? randomUUID();
   const cwd = opts.dir ?? session.cwd ?? process.cwd();
   const nowIso = new Date().toISOString();
-  const cliVersion = latestCliVersion(stateDb);
+  const defaults = threadDefaults(stateDb);
+  const cliVersion = defaults.cliVersion;
   const d = new Date(nowIso);
   const yyyy = String(d.getUTCFullYear());
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -319,8 +352,10 @@ function writeCodex(session: CanonicalSession, opts: SessionWriteOptions): Sessi
 
   const turnId = randomUUID();
   const startedAt = Math.floor(d.getTime() / 1000);
-  const model = 'gpt-5.5';
-  const modelContextWindow = 258400;
+  // Prefer what this Codex install actually uses (from its own threads/rollouts)
+  // over hardcoded values, in case resume validates the model/window.
+  const model = defaults.model ?? 'gpt-5.5';
+  const modelContextWindow = detectContextWindow() ?? 258400;
   const currentDate = `${yyyy}-${mm}-${dd}`;
   let timezone = 'UTC';
   try {

@@ -15,12 +15,15 @@ describe('gemini parseGeminiSession', () => {
       { id: 'm1', type: 'user', content: [{ text: 'read the file' }] },
       { id: 'm2', type: 'gemini', content: '', toolCalls: [{ id: 'c1', name: 'read_file', args: { path: 'x.ts' } }] },
       { id: 'm3', type: 'user', content: [{ functionResponse: { id: 'c1', name: 'read_file', response: { output: 'file body' } } }] },
+      // m4 carries BOTH `thoughts` and `content`, so it yields two items in
+      // order: a `reasoning` (from thoughts) then a `message` (from content).
       { id: 'm4', type: 'gemini', content: 'Here is the summary.', thoughts: 'thinking…' },
     ]);
 
     const { items, sessionId, createdAt } = parseGeminiSession(content);
     assert.equal(sessionId, 'abc-123');
     assert.equal(createdAt, '2026-07-08T00:00:00.000Z');
+    // m1→message, m2→tool_call, m3→tool_result, m4→reasoning+message.
     assert.deepEqual(items.map(i => i.type), ['message', 'tool_call', 'tool_result', 'reasoning', 'message']);
 
     assert.equal((items[0] as { text: string }).text, 'read the file');
